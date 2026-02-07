@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>DDx Side Panel</title>
+    <style>
+        /* Basic Reset & Typography */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            padding: 10px;
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #333;
+        }
+
+        h2,
+        h3 {
+            margin: 0;
+            padding: 0;
+        }
+
+        a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+            resize: vertical;
+            padding: 8px;
+            font-family: inherit;
+            margin-bottom: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+
+        header h2 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .settings-icon {
+            font-size: 18px;
+            cursor: pointer;
+            text-decoration: none;
+            color: #666;
+        }
+
+        /* Input Section */
+        #status-banner {
+            padding: 8px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            display: none;
+        }
+
+        #status-banner.red {
+            background-color: #ffebee;
+            color: #d32f2f;
+            border: 1px solid #ffcdd2;
+        }
+
+        #status-banner.yellow {
+            background-color: #fffde7;
+            color: #fbc02d;
+            border: 1px solid #fff9c4;
+        }
+
+        #status-banner.green {
+            background-color: #e8f5e9;
+            color: #388e3c;
+            border: 1px solid #c8e6c9;
+        }
+
+        #analyze-btn {
+            width: 100%;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        #analyze-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        #analyze-btn:not(:disabled):hover {
+            background-color: #0056b3;
+        }
+
+        /* Results */
+        #results-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .section {
+            margin-bottom: 15px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .section-header {
+            background: #f5f5f5;
+            padding: 8px;
+            font-weight: bold;
+            font-size: 13px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .section-content {
+            padding: 10px;
+        }
+
+        .cannot-miss-header {
+            background-color: #ffebee;
+            color: #d32f2f;
+        }
+
+        .red-flags-list {
+            color: #d32f2f;
+            list-style-type: disc;
+            padding-left: 20px;
+            margin: 0;
+        }
+
+        .diagnosis-item {
+            margin-bottom: 8px;
+        }
+
+        .confidence-high {
+            color: #2e7d32;
+            font-weight: bold;
+        }
+
+        .confidence-medium {
+            color: #f57c00;
+        }
+
+        .confidence-low {
+            color: #757575;
+            font-size: 0.9em;
+        }
+
+        /* Added */
+
+        /* Why Accordion */
+        details {
+            margin-bottom: 5px;
+            background: #fff;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+
+        summary {
+            padding: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            outline: none;
+            list-style: none;
+        }
+
+        summary::-webkit-details-marker {
+            display: none;
+        }
+
+        summary::after {
+            content: '+';
+            float: right;
+            font-weight: bold;
+        }
+
+        details[open] summary::after {
+            content: '-';
+        }
+
+        .rationale-content {
+            padding: 10px;
+            font-size: 13px;
+            color: #555;
+            border-top: 1px solid #eee;
+            background: #fafafa;
+        }
+
+        /* References */
+        .ref-link {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .guideline-text {
+            display: block;
+            margin-bottom: 4px;
+            color: #555;
+            font-style: italic;
+        }
+
+        .suppressed-count {
+            font-size: 11px;
+            color: #999;
+            margin-top: 8px;
+            text-align: right;
+        }
+
+        /* Footer */
+        footer {
+            margin-top: 30px;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+            font-size: 11px;
+            color: #999;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h2>DDx Assistant</h2>
+        <a href="options.html" target="_blank" class="settings-icon">⚙️</a>
+    </header>
+
+    <main>
+        <!-- Input -->
+        <textarea id="input-text" rows="4" placeholder="Select text and right-click to start..."></textarea>
+        <div id="status-banner"></div>
+        <button id="analyze-btn" disabled>Analyze</button>
+
+        <div id="loading" style="display:none; text-align:center; margin: 20px;">
+            Scanning...
+        </div>
+
+        <!-- Results -->
+        <div id="results-container">
+
+            <!-- Likely -->
+            <div class="section">
+                <div class="section-header">Common / Likely</div>
+                <div class="section-content" id="list-common"></div>
+            </div>
+
+            <!-- Cannot Miss -->
+            <div class="section" style="border-color: #ffcdd2;">
+                <div class="section-header cannot-miss-header">⚠️ Must Not Miss</div>
+                <div class="section-content" id="list-cannot-miss"></div>
+            </div>
+
+            <!-- Red Flags -->
+            <div class="section">
+                <div class="section-header">Red Flags</div>
+                <div class="section-content">
+                    <ul id="list-red-flags" class="red-flags-list"></ul>
+                </div>
+            </div>
+
+            <!-- Why -->
+            <div class="section">
+                <div class="section-header">Rationale</div>
+                <div class="section-content" id="list-rationale"></div>
+            </div>
+
+            <!-- Next Steps -->
+            <div class="section">
+                <div class="section-header">Next Steps</div>
+                <div class="section-content">
+                    <ul id="list-next-steps" style="padding-left: 20px; margin: 0;"></ul>
+                </div>
+            </div>
+
+            <!-- References -->
+            <div class="section">
+                <div class="section-header">References (Verified Only)</div>
+                <div class="section-content">
+                    <div id="list-pmids"></div>
+                    <div id="list-guidelines"></div>
+                    <div id="suppressed-ref-msg" class="suppressed-count"></div>
+                </div>
+            </div>
+
+            <!-- Chart Copy -->
+            <div class="section">
+                <div class="section-header">Chart Copy Summary</div>
+                <div class="section-content">
+                    <textarea id="chart-copy-text" rows="6" readonly></textarea>
+                    <button id="copy-btn" style="width:100%; margin-top:5px; background:#666;">Copy to
+                        Clipboard</button>
+                </div>
+            </div>
+
+        </div> <!-- End Results -->
+
+    </main>
+
+    <footer>
+        <p>Not a medical device. For professional reference only.<br>Output generated by AI may contain errors.</p>
+    </footer>
+
+    <script type="module" src="sidepanel.js"></script>
+</body>
+
+</html>
