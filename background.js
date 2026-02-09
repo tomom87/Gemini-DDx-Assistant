@@ -1,12 +1,9 @@
 /**
- * Background Service Worker (Fixed v1.4.2)
- * Handles Context Menu, Side Panel Handshake, and PMID Verification.
+ * Background Service Worker
+ * Handles Context Menu, Handshake, and Offscreen Clipboard operations.
  */
 
-import { PmidVerifier } from './modules/pmid_verifier.js';
-
-const pmidVerifier = new PmidVerifier();
-let pendingText = null; // Transient buffer for handshake
+let pendingText = null;
 
 chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({
@@ -16,34 +13,71 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     if (info.menuItemId === "ddx-start") {
-        // 1. Store text temporarily
         pendingText = info.selectionText;
 
-        // 2. Open Panel
-        chrome.sidePanel.open({ tabId: tab.id });
+        // 2. Open Panel (if closed)
+        await chrome.sidePanel.open({ tabId: tab.id });
+
+        // 3. If panel is already open, notify it immediately
+        // This ensures subsequent clicks also trigger analysis
+        try {
+            await chrome.runtime.sendMessage({
+                action: 'NEW_TEXT',
+                text: pendingText
+            });
+            pendingText = null; // Clear if handled
+        } catch (e) {
+            // Error means panel might not be open yet, which is fine (handled by handshake)
+            console.log("Sidepanel not active yet, waiting for handshake");
+        }
     }
 });
 
 // Message Handling
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === 'PANEL_READY') {
-        // 3. Handshake received from Side Panel
         if (pendingText) {
             sendResponse({ text: pendingText });
-            pendingText = null; // Clear immediately after sending
+            pendingText = null;
         } else {
             sendResponse({ text: null });
         }
-        return false; // Synchronous response usually fine here, but safety first
+        return false;
     }
 
-    if (msg.action === 'VERIFY_PMIDS') {
-        // 4. Delegate Verification to SW Logic (Async)
-        pmidVerifier.verify(msg.pmids).then(results => {
-            sendResponse(results);
+    if (msg.action === 'CLIPBOARD_COPY') {
+        handleClipboardCopy(msg.text).then(() => {
+            sendResponse({ success: true });
+        }).catch(err => {
+            console.error('Clipboard copy error:', err);
+            sendResponse({ success: false, error: err.message });
         });
-        return true; // Keep channel open for async response
+        return true; // Async
     }
 });
+
+async function handleClipboardCopy(text) {
+    const hasOffscreen = await chrome.offscreen.hasDocument();
+    if (!hasOffscreen) {
+        await chrome.offscreen.createDocument({
+            url: 'offscreen.html',
+            reasons: [chrome.offscreen.Reason.CLIPBOARD],
+            justification: 'Copying clinical summary to clipboard automatically'
+        });
+    }
+
+    // Send the message to the offscreen document - with small delay for initialization
+    setTimeout(async () => {
+        try {
+            await chrome.runtime.sendMessage({
+                type: 'WRITE_CLIPBOARD',
+                target: 'offscreen',
+                data: text
+            });
+        } catch (e) {
+            console.error('Failed to send to offscreen:', e);
+        }
+    }, 100);
+}

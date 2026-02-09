@@ -27,7 +27,6 @@
 本拡張機能は以下の外部サービスを利用します。
 
 *   **Google Gemini API**: AIによる推論を行うために使用します。利用規約は [Google Generative AI Terms of Service](https://policies.google.com/terms) に準拠します。
-*   **PubMed (NCBI)**: 医学文献の実在確認を行うために、PubMed ID (PMID) を送信します。利用規約は [NCBI's Privacy Policy](https://www.ncbi.nlm.nih.gov/home/about/policies.shtml) に準拠します。
 
 ### 3. お問い合わせ
 本プライバシーポリシーに関するご質問は、GitHubリポジトリの Issue ページよりお問い合わせください。
@@ -56,9 +55,6 @@ The Extension **DOES NOT** collect, store, or share any personal identification 
 
 #### A. Google Gemini API
 The Extension uses Google's Generative AI services. Use of this API is subject to [Google's Generative AI Terms of Service](https://policies.google.com/terms).
-
-#### B. PubMed (NCBI)
-The Extension verifies scientific citations by sending PubMed IDs (PMIDs) to the National Center for Biotechnology Information (NCBI). This interaction is subject to [NCBI's Privacy Policy](https://www.ncbi.nlm.nih.gov/home/about/policies.shtml).
 
 ### 3. Contact
 If you have questions about this Privacy Policy, please contact the developer via the GitHub repository issues page.

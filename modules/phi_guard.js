@@ -101,20 +101,49 @@ export class PhiGuard {
         }
 
         // 2. Hard Block Scan (Stateless test)
-        for (const pattern of HARD_PATTERNS) {
+        let hardHits = [];
+        const hardLabels = [
+            "Name (氏名)",
+            "Name Label (Name:)",
+            "ID (MRN/カルテNo)",
+            "Patient ID Bracket",
+            "Phone (電話)",
+            "Email",
+            "Address (住所)",
+            "Date (日付)",
+            "ISO Date",
+            "Facility (病院+部屋)"
+        ];
+
+        HARD_PATTERNS.forEach((pattern, index) => {
             if (pattern.test(redactedText)) {
-                status = 'RED';
-                blockReason = 'Names, IDs, DOBs, Contact Info, or Specific Location (Hospital+Room) detected.';
-                return { status, redactedText, ageContext, blockReason };
+                hardHits.push(hardLabels[index] || "Unknown Pattern");
             }
+        });
+
+        if (hardHits.length > 0) {
+            status = 'RED';
+            // Return unique hits
+            blockReason = [...new Set(hardHits)];
+            return { status, redactedText, ageContext, blockReason };
         }
 
         // 3. Soft Warning Scan
-        for (const pattern of SOFT_PATTERNS) {
+        let softHits = [];
+        const softLabels = [
+            "Facility Name (病院名)",
+            "Context Keyword (紹介状等)"
+        ];
+
+        SOFT_PATTERNS.forEach((pattern, index) => {
             if (pattern.test(redactedText)) {
-                status = 'YELLOW';
-                blockReason = 'Potential facility names or context keywords detected.';
+                softHits.push(softLabels[index] || "Warning Pattern");
             }
+        });
+
+        if (softHits.length > 0) {
+            status = 'YELLOW';
+            blockReason = [...new Set(softHits)];
         }
 
         return { status, redactedText, ageContext, blockReason };

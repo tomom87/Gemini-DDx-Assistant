@@ -57,7 +57,10 @@ export class KeyRotationManager {
             return { key: keys[i], index: i };
         }
 
-        throw new Error('ALL_KEYS_EXHAUSTED_OR_DISABLED');
+        // If we get here, no key was found
+        const reason = keys.length === 0 ? "No keys set" : "All keys disabled/cooldown/limit";
+        console.error('KeyRotationManager: Exhaustion. Stats:', usage, 'Keys length:', keys.length);
+        throw new Error(`ALL_KEYS_EXHAUSTED_OR_DISABLED: ${reason}`);
     }
 
     async incrementUsage(index) {

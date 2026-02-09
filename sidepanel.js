@@ -1,3 +1,4 @@
+// v1.1.0 (Refined & Fixed)
 import { PhiGuard } from './modules/phi_guard.js';
 import { KeyRotationManager } from './modules/key_rotation.js';
 
@@ -26,13 +27,6 @@ IMPORTANT: OUTPUT LANGUAGE MUST BE JAPANESE (日本語).
 - Next steps: Japanese.
 - Chart summary: Japanese.
 
-IMPORTANT REFERENCES RULE:
-- Do NOT output any URLs.
-- If providing references, output ONLY PMID(s) and/or guideline identifier text (organization + year + title).
-- Provide at most 3 PMIDs total.
-- For EACH PMID, include exactly one 1-line relevance_reason in JAPANESE tied to the input.
-- If you are not confident a PMID is real and relevant, output no PMIDs.
-
 JSON Output Schema:
 {
   "blocked": "none" | "phi_suspected" | "policy_treatment",
@@ -43,36 +37,13 @@ JSON Output Schema:
   "why": [
     { "name": "string (Diagnosis)", "supporting_facts": "string (Japanese)", "counterpoints": "string (Japanese)", "missing_info": "string (Japanese)" }
   ],
-  "references": {
-    "pmids": [{ "pmid": "digits", "relevance_reason": "string (Japanese)" }],
-    "guidelines": [{ "text": "string (Japanese)" }]
-  },
   "chart_copy_summary": "string (Japanese)"
 }
 `;
 
 // --- Initialization ---
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // Handshake with Background
-    try {
-        const response = await chrome.runtime.sendMessage({ action: 'PANEL_READY' });
-        if (response && response.text) {
-            // Initial Load: Pre-Redact per spec
-            const check = PhiGuard.analyze(response.text);
-            textInput.value = check.redactedText; // Show redacted version initially
-            handleInputChanged(); // Trigger status check
-        }
-    } catch (e) {
-        console.log("Handshake failed or no pending text", e);
-    }
-});
-
-textInput.addEventListener('input', handleInputChanged);
-analyzeBtn.addEventListener('click', runAnalysis);
-
-
-// --- Logic ---
+const MSG_PATIENT_INFO = "患者情報が含まれている可能性があります";
 
 function handleInputChanged() {
     const text = textInput.value;
@@ -91,6 +62,8 @@ function handleInputChanged() {
     } else {
         updateStatus('GREEN');
     }
+
+    return check.status;
 }
 
 function updateStatus(type, reason) {
@@ -105,18 +78,60 @@ function updateStatus(type, reason) {
 
     if (type === 'RED') {
         statusBanner.classList.add('red');
-        statusBanner.textContent = `🚫 PHI BLOCKED: ${reason} (Edit Required)`;
+        // Format: "Patient Info...\n⚠️ Name, Hospital..."
+        const reasons = Array.isArray(reason) ? reason.join(', ') : reason;
+        statusBanner.innerText = `${MSG_PATIENT_INFO}\n⚠️ ${reasons}`;
         analyzeBtn.disabled = true;
     } else if (type === 'YELLOW') {
         statusBanner.classList.add('yellow');
-        statusBanner.textContent = `⚠️ CHECK INFO: ${reason}`;
+        const reasons = Array.isArray(reason) ? reason.join(', ') : reason;
+        statusBanner.innerText = `⚠️ CHECK INFO: ${reasons}`;
         analyzeBtn.disabled = false;
     } else {
         statusBanner.classList.add('green');
-        statusBanner.textContent = `✅ READY (Output: PMIDs & Guidelines)`;
+        statusBanner.innerText = `✅ READY (Output: Guidelines & Chart Summary)`;
         analyzeBtn.disabled = false;
     }
 }
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // Handshake with Background
+    try {
+        const response = await chrome.runtime.sendMessage({ action: 'PANEL_READY' });
+        if (response && response.text) {
+            // Initial Load: Pre-Redact per spec
+            const check = PhiGuard.analyze(response.text);
+            textInput.value = check.redactedText; // Show redacted version initially
+
+            // Check status and AUTO-RUN if safe
+            const status = handleInputChanged();
+
+            if (status === 'GREEN') {
+                runAnalysis();
+            }
+        }
+    } catch (e) {
+        console.log("Handshake failed or no pending text", e);
+    }
+
+    // LISTENER for subsequent text sends (Context Menu clicked while panel is open)
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (msg.action === 'NEW_TEXT' && msg.text) {
+            textInput.value = PhiGuard.analyze(msg.text).redactedText;
+            const status = handleInputChanged();
+            if (status === 'GREEN') {
+                runAnalysis();
+            }
+            sendResponse({ success: true });
+        }
+    });
+});
+
+textInput.addEventListener('input', handleInputChanged);
+analyzeBtn.addEventListener('click', runAnalysis);
+
+
+// --- Logic ---
 
 async function runAnalysis() {
     // 1. UI Reset
@@ -130,9 +145,7 @@ async function runAnalysis() {
     document.getElementById('list-red-flags').innerHTML = '';
     document.getElementById('list-rationale').innerHTML = '';
     document.getElementById('list-next-steps').innerHTML = '';
-    document.getElementById('list-pmids').innerHTML = '';
-    document.getElementById('list-guidelines').innerHTML = '';
-    document.getElementById('suppressed-ref-msg').textContent = '';
+    // Removed references from UI
     document.getElementById('chart-copy-text').value = '';
 
     try {
@@ -201,21 +214,39 @@ async function runAnalysis() {
 
         await renderResults(json);
 
+        // AUTO-COPY Chart Summary: Use Background -> Offscreen for reliable access
+        if (json.chart_copy_summary) {
+            try {
+                const res = await chrome.runtime.sendMessage({
+                    action: 'CLIPBOARD_COPY',
+                    text: json.chart_copy_summary
+                });
+                if (res && res.success) {
+                    console.log("Auto-copy requested successfully");
+                } else {
+                    console.error("Auto-copy dispatch failed in Background:", res?.error);
+                }
+            } catch (err) {
+                console.error("Auto-copy message dispatch threw:", err);
+            }
+        }
+
     } catch (e) {
         if (e.message.includes('ALL_KEYS')) {
-            alert("All API keys are exhausted or disabled. Please check Settings.");
+            alert("APIキーが設定されていないか、すべて無効（エラー）になっています。Settingsを確認してください。");
         } else if (e.message.includes('API_ERROR')) {
-            alert(`API Error: ${e.message}. Key rotated. Please try again.`);
+            alert(`API Error: ${e.message}. キーを回転しました。もう一度Analyzeを押してください。`);
         } else if (e.message === 'PHI_BLOCK_ACTIVE') {
-            alert("Cannot analyze: PHI issues detected.");
+            alert("患者情報（PHI）が検出されたため、送信をブロックしました。");
         } else {
-            alert(`Error: ${e.message}`);
+            alert(`実行エラー: ${e.message}`);
         }
     } finally {
         loadingDiv.style.display = 'none';
         handleInputChanged();
     }
 }
+
 
 async function renderResults(json) {
     resultsContainer.style.display = 'block';
@@ -242,39 +273,7 @@ async function renderResults(json) {
     </details>
   `).join('');
 
-    // References - VERIFICATION via BACKGROUND
-    const pmidList = json.references?.pmids || [];
-    const pmidIds = pmidList.map(p => p.pmid);
-
-    let verifyMap = {};
-    if (pmidIds.length > 0) {
-        // Send message to SW
-        verifyMap = await chrome.runtime.sendMessage({ action: 'VERIFY_PMIDS', pmids: pmidIds });
-    }
-
-    const listPmidsEl = document.getElementById('list-pmids');
-    let validHtml = '';
-    let suppressedCount = 0;
-
-    pmidList.forEach(p => {
-        if (verifyMap[p.pmid]) {
-            validHtml += `<a class="ref-link" href="https://pubmed.ncbi.nlm.nih.gov/${p.pmid}/" target="_blank">PMID: ${p.pmid} - ${p.relevance_reason || 'Link'}</a>`;
-        } else {
-            suppressedCount++;
-        }
-    });
-    listPmidsEl.innerHTML = validHtml;
-
-    const suppressedMsgEl = document.getElementById('suppressed-ref-msg');
-    if (suppressedCount > 0) {
-        suppressedMsgEl.textContent = `Suppressed references: ${suppressedCount} (verification failed)`;
-    } else {
-        suppressedMsgEl.textContent = '';
-    }
-
-    document.getElementById('list-guidelines').innerHTML = (json.references?.guidelines || []).map(g =>
-        `<span class="guideline-text">Guideline: ${g.text}</span>`
-    ).join('');
+    // References REMOVED per user request
 
     // Chart Copy
     const copyText = document.getElementById('chart-copy-text');
